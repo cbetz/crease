@@ -10,10 +10,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/transform"
+
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -89,51 +91,71 @@ func main() {
 	}
 	defer session.Close()
 
-	c := session.DB("crease").C("users")
-
-	updateDate := time.Now()
-
 	// Skip the date line.
 	scanner.Scan()
 
 	// Skip the column header line.
 	scanner.Scan()
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		// Create a wait group to manage the goroutines.
+		var waitGroup sync.WaitGroup
 
-		entry := strings.Split(line, "\t")
-
-		score, err := strconv.ParseUint(entry[1], 10, 64)
-		if err != nil {
-			println("error parsing score")
+		// Perform 10 concurrent queries against the database.
+		waitGroup.Add(10)
+		for query := 0; query < 10; query++ {
+			if scanner.Scan() {
+				go updateUserData(query, &waitGroup, session, scanner.Text())
+			} else {
+				break
+			}
 		}
 
-		wu, err := strconv.ParseUint(entry[2], 10, 64)
-		if err != nil {
-			println("error parsing wu")
+		// Wait for all the queries to complete.
+		waitGroup.Wait()
+
+		if scanner.Scan() == false {
+			break
 		}
-
-		team, err := strconv.ParseUint(entry[3], 10, 64)
-		if err != nil {
-			println("error parsing team:" + err.Error())
-		}
-
-		data := Data{Score: score, WorkUnits: wu, Date: updateDate}
-		user := User{Name: entry[0], Team: team}
-
-		updateUserData(c, user, data)
-	}
-
-	if err := scanner.Err(); err != nil {
-		println("error with scanner")
-		log.Fatal(err)
 	}
 }
 
-func updateUserData(c *mgo.Collection, user User, data Data) {
+func updateUserData(query int, waitGroup *sync.WaitGroup, mongoSession *mgo.Session, line string) {
+	entry := strings.Split(line, "\t")
+
+	score, err := strconv.ParseUint(entry[1], 10, 64)
+	if err != nil {
+		println("error parsing score")
+	}
+
+	wu, err := strconv.ParseUint(entry[2], 10, 64)
+	if err != nil {
+		println("error parsing wu")
+	}
+
+	team, err := strconv.ParseUint(entry[3], 10, 64)
+	if err != nil {
+		println("error parsing team:" + err.Error())
+	}
+
+	updateDate := time.Now()
+	data := Data{Score: score, WorkUnits: wu, Date: updateDate}
+	user := User{Name: entry[0], Team: team}
+
+	// Decrement the wait group count so the program knows this
+	// has been completed once the goroutine exits.
+	defer waitGroup.Done()
+
+	// Request a socket connection from the session to process our query.
+	// Close the session when the goroutine exits and put the connection back
+	// into the pool.
+	sessionCopy := mongoSession.Copy()
+	defer sessionCopy.Close()
+
+	c := sessionCopy.DB("crease").C("users")
+
 	result := new(User)
-	err := c.Find(bson.M{"Name": user.Name}).One(&result)
+	err = c.Find(bson.M{"name": user.Name}).One(&result)
 	if err != nil {
 		err = c.Insert(user)
 		if err != nil {
