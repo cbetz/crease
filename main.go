@@ -30,8 +30,6 @@ type Data struct {
 	Date      time.Time
 }
 
-const dateFormat = "Thu Nov 12 10:20:01 PST 2015"
-
 func main() {
 
 	output, err := os.Create("daily_user_summary.txt.bz2")
@@ -50,7 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	print(n, " bytes downloaded")
+	print(n, " bytes downloaded\n")
 
 	compressed, err := os.Open("daily_user_summary.txt.bz2")
 	if err != nil {
@@ -93,47 +91,38 @@ func main() {
 
 	c := session.DB("crease").C("users")
 
-	var skipLine = 2
-	var updateDate time.Time
+	updateDate := time.Now()
 
-	updateDate = time.Now()
+	// Skip the date line.
+	scanner.Scan()
+
+	// Skip the column header line.
+	scanner.Scan()
 
 	for scanner.Scan() {
-		if skipLine == 2 {
-			updateDate, err = time.Parse(dateFormat, scanner.Text())
-			if err != nil {
+		line := scanner.Text()
 
-			}
-		}
-		if skipLine == 0 {
-			line := scanner.Text()
+		entry := strings.Split(line, "\t")
 
-			entry := strings.Split(line, "\t")
-
-			score, err := strconv.ParseUint(entry[1], 10, 64)
-			if err != nil {
-				println("error parsing score")
-			}
-
-			wu, err := strconv.ParseUint(entry[2], 10, 64)
-			if err != nil {
-				println("error parsing wu")
-			}
-
-			team, err := strconv.ParseUint(entry[3], 10, 64)
-			if err != nil {
-				println("error parsing team")
-			}
-
-			data := Data{Score: score, WorkUnits: wu, Date: updateDate}
-			user := User{Name: entry[0], Team: team}
-
-			updateUserData(c, user, data)
-
-		} else {
-			skipLine--
+		score, err := strconv.ParseUint(entry[1], 10, 64)
+		if err != nil {
+			println("error parsing score")
 		}
 
+		wu, err := strconv.ParseUint(entry[2], 10, 64)
+		if err != nil {
+			println("error parsing wu")
+		}
+
+		team, err := strconv.ParseUint(entry[3], 10, 64)
+		if err != nil {
+			println("error parsing team:" + err.Error())
+		}
+
+		data := Data{Score: score, WorkUnits: wu, Date: updateDate}
+		user := User{Name: entry[0], Team: team}
+
+		updateUserData(c, user, data)
 	}
 
 	if err := scanner.Err(); err != nil {

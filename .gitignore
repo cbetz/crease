@@ -22,3 +22,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+daily_user_summary.txt
+
+daily_user_summary.txt.bz2
