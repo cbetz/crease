@@ -101,6 +101,8 @@ func main() {
 		// Create a wait group to manage the goroutines.
 		var waitGroup sync.WaitGroup
 
+		start := time.Now()
+
 		// Perform 10 concurrent queries against the database.
 		waitGroup.Add(10)
 		for query := 0; query < 10; query++ {
@@ -113,6 +115,9 @@ func main() {
 
 		// Wait for all the queries to complete.
 		waitGroup.Wait()
+
+		elapsed := time.Since(start)
+		log.Printf("Processed in %s", elapsed)
 
 		if scanner.Scan() == false {
 			break
